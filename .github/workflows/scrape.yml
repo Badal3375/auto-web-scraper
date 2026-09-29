@@ -1,0 +1,38 @@
+# Free unattended scraping on GitHub Actions. Runs daily at 08:00 IST (02:30 UTC)
+# and can also be triggered manually from the Actions tab.
+name: scheduled-scrape
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Scrape
+        run: python main.py run
+        env:
+          SCRAPER_WEBHOOK_URL: ${{ secrets.SCRAPER_WEBHOOK_URL }}   # optional
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scrape-exports
+          path: data/exports/
+      # Commit the SQLite file so new/updated detection persists between runs.
+      # Delete this step if the repo is public and the data is private.
+      - name: Save database
+        if: always()
+        run: |
+          git config user.name "scraper-bot"
+          git config user.email "scraper-bot@users.noreply.github.com"
+          git add data/*.db
+          git diff --staged --quiet || (git commit -m "chore: update scraped data" && git push)

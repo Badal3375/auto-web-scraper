@@ -1,0 +1,4 @@
+# pip install -r requirements-extra.txt
+streamlit>=1.50      # python -m streamlit run dashboard/app.py
+playwright>=1.44     # JavaScript-rendered sites; then run: playwright install chromium
+pytest>=8.0          # python -m pytest
