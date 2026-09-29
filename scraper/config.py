@@ -51,8 +51,8 @@ class NextPage:
 @dataclass
 class TargetConfig:
     name: str
-    item_selector: str
-    fields: list[FieldSpec]
+    item_selector: str = "body"
+    fields: list[FieldSpec] = field(default_factory=list)
     start_urls: list[str] = field(default_factory=list)
     url_template: str | None = None  # e.g. "https://site.com/list?page={page}"
     start_page: int = 1
@@ -61,6 +61,8 @@ class TargetConfig:
     dedupe_on: list[str] = field(default_factory=list)
     use_playwright: bool | None = None
     wait_selector: str | None = None
+    is_analysis: bool = False
+
 
 
 @dataclass
@@ -80,6 +82,7 @@ class AppConfig:
     targets: list[TargetConfig]
     schedule: ScheduleConfig
     exports: list[str]
+    analysis_urls: list[str] = field(default_factory=list)
     webhook_url: str | None = None
     log_level: str = "INFO"
 
@@ -121,17 +124,24 @@ def _parse_target(raw: dict[str, Any]) -> TargetConfig:
     name = raw.get("name")
     if not name:
         raise ConfigError("Every target needs a 'name'")
-    if not raw.get("item_selector"):
-        raise ConfigError(f"Target '{name}': 'item_selector' is required")
-    if not raw.get("fields"):
-        raise ConfigError(f"Target '{name}': define at least one field under 'fields'")
+
+    is_analysis = raw.get("mode") in ("analysis", "analyze") or raw.get("type") in ("analysis", "analyze")
+    item_selector = raw.get("item_selector")
+    if not item_selector:
+        item_selector = "body"
+        is_analysis = True
+
+    raw_fields = raw.get("fields")
+    if not raw_fields:
+        raw_fields = {"text": {"selector": "body"}}
+        is_analysis = True
 
     start_urls = raw.get("start_urls") or ([raw["start_url"]] if raw.get("start_url") else [])
     template = raw.get("url_template")
     if bool(start_urls) == bool(template):
         raise ConfigError(f"Target '{name}': set exactly one of start_url(s) or url_template")
 
-    specs = [_parse_field(n, r) for n, r in raw["fields"].items()]
+    specs = [_parse_field(n, r) for n, r in raw_fields.items()]
     dedupe = list(raw.get("dedupe_on") or [])
     missing = [d for d in dedupe if d not in {s.name for s in specs}]
     if missing:
@@ -144,11 +154,20 @@ def _parse_target(raw: dict[str, Any]) -> TargetConfig:
         raise ConfigError(f"Target '{name}': max_pages must be >= 1")
 
     return TargetConfig(
-        name=name, item_selector=raw["item_selector"], fields=specs, start_urls=start_urls,
-        url_template=template, start_page=int(raw.get("start_page", 1)), max_pages=max_pages,
-        next_page=next_page, dedupe_on=dedupe, use_playwright=raw.get("use_playwright"),
+        name=name,
+        item_selector=item_selector,
+        fields=specs,
+        start_urls=start_urls,
+        url_template=template,
+        start_page=int(raw.get("start_page", 1)),
+        max_pages=max_pages,
+        next_page=next_page,
+        dedupe_on=dedupe,
+        use_playwright=raw.get("use_playwright"),
         wait_selector=raw.get("wait_selector"),
+        is_analysis=is_analysis,
     )
+
 
 
 def config_from_dict(data: dict[str, Any], base_dir: Path) -> AppConfig:
@@ -178,10 +197,19 @@ def config_from_dict(data: dict[str, Any], base_dir: Path) -> AppConfig:
     out = Path(data.get("output_dir", "data"))
     out = out if out.is_absolute() else base_dir / out
 
+    raw_analysis = data.get("analysis_urls") or []
+    if isinstance(raw_analysis, str):
+        raw_analysis = [raw_analysis]
+    all_analysis_urls = list(raw_analysis)
+    for t in targets:
+        for u in t.start_urls:
+            if u not in all_analysis_urls:
+                all_analysis_urls.append(u)
+
     return AppConfig(
         project=data.get("project", "scraper"), base_dir=base_dir, output_dir=out,
         request=RequestConfig(**req_raw), targets=targets, schedule=ScheduleConfig(**sched_raw),
-        exports=exports,
+        exports=exports, analysis_urls=all_analysis_urls,
         webhook_url=os.environ.get("SCRAPER_WEBHOOK_URL") or data.get("webhook_url"),
         log_level=str(data.get("log_level", "INFO")).upper(),
     )

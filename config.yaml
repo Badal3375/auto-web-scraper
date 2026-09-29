@@ -1,8 +1,5 @@
 # ============================================================================
-#  AutoScraper configuration.  Two demo targets from scraping sandboxes
-#  (books.toscrape.com, quotes.toscrape.com) - built for practice, safe to scrape.
-#  To scrape your own site: copy a target block, change the URL + selectors,
-#  and test with:  python main.py preview -t <name>
+#  AutoScraper & Website Intelligence configuration.
 # ============================================================================
 project: demo                 # names the database file: data/demo.db
 output_dir: data              # relative to this file
@@ -17,42 +14,52 @@ request:
   backoff: 2.0
   respect_robots: true        # keep this on unless you own the site
   use_playwright: false       # true = headless Chromium for JavaScript-rendered pages
-  user_agent: "AutoScraper/1.0 (contact: you@example.com)"   # identify yourself
-  # proxy: "http://user:pass@host:port"
-  # headers: {Accept-Language: "en-IN,en;q=0.9"}
+  user_agent: "AutoScraper/1.0 (contact: you@example.com)"
 
 schedule:                     # used by:  python main.py schedule
   enabled: true
-  interval_minutes: 360       # every 6 hours...
-  # cron: "0 8 * * *"         # ...or a cron expression (overrides interval_minutes)
+  interval_minutes: 360
   timezone: Asia/Kolkata
 
-# webhook_url: https://hooks.slack.com/services/XXX   # alerts on failed/empty runs
-#                                                    # (or set env var SCRAPER_WEBHOOK_URL)
+# ============================================================================
+#  URLs for Company, HR, and Email Analysis:
+#  Analyze with: python main.py analyze <url> or in the Streamlit Dashboard
+# ============================================================================
+analysis_urls:
+  - https://internshala.com/blog/top-it-companies-in-indore/
+  - https://example.com
 
+# ============================================================================
+#  Scraping Targets (Structured repeat-element extraction)
+# ============================================================================
 targets:
-  # ---- follows the "next" button -------------------------------------------
-  - name: books
+  # Target for Website / Company Analysis
+  - name: my_company
     start_url: https://internshala.com/blog/top-it-companies-in-indore/
+    max_pages: 3
+
+  # Demo Target 1: Books sandbox
+  - name: books
+    start_url: https://books.toscrape.com/catalogue/page-1.html
     max_pages: 3
     item_selector: article.product_pod          # one match = one row
     next_page: {selector: li.next a}            # pagination via the next link
     dedupe_on: [url]                            # unique key; drives new/updated detection
     fields:
       title:        {selector: h3 a, attr: title}
-      price:        {selector: .price_color, type: price}      # "£51.77" -> 51.77
-      rating:       {selector: p.star-rating, attr: class, type: rating}   # "Three" -> 3
+      price:        {selector: .price_color, type: price}
+      rating:       {selector: p.star-rating, attr: class, type: rating}
       availability: {selector: .availability}
       url:          {selector: h3 a, attr: href, absolute: true}
 
-  # ---- URL pattern pagination + multi-value field --------------------------
+  # Demo Target 2: Quotes sandbox
   - name: quotes
     url_template: https://quotes.toscrape.com/page/{page}/
     start_page: 1
-    max_pages: 3                                # stops earlier if a page has no items
+    max_pages: 3
     item_selector: div.quote
     dedupe_on: [text]
     fields:
       text:   {selector: span.text}
       author: {selector: small.author}
-      tags:   {selector: a.tag, multiple: true}                  # joined with " | "
+      tags:   {selector: a.tag, multiple: true}
